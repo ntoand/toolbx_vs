@@ -1,17 +1,12 @@
 #!/usr/bin/env python
 
+# Uses the results.csv previously generated to locate the X docking poses
+# following a VS. Loads them using ICM and saves the poses wanted to a single
+# .pdb file. Also saves the receptor to that .pdb file. That file can then be
+# opened using ICM or an other molecular viewer.
 
-###############################################################################
-#
-#   Uses the results.csv previously generated to locate the top X docking poses
-#   following a VS. Loads them using ICM and saves the poses wanted to a single
-#   .pdb file. Also saves the receptor to that .pdb file. That file can then be
-#   opened using ICM or an other molecular viewer.
-#
-#   Thomas Coudrat, July 2014
-#
-###############################################################################
-
+# https://github.com/thomas-coudrat/toolbx_vs
+# Thomas Coudrat <thomas.coudrat@gmail.com>
 
 import csv
 import sys
@@ -26,23 +21,24 @@ import json
 
 def main():
     """
-    Run the scripts
+    Run script
     """
 
     # Get the arguments and paths
-    resultsPath, X, ligIDs = parseArgs()
+    resultsPath, ligs_from_A, ligs_to_B, ligIDs, label = parseArgs()
     icm = getPath()
 
     # Fix paths
     cwd = os.getcwd()
     vsPath = os.path.dirname(cwd + "/" + resultsPath)
-    projName = os.path.basename(os.path.dirname(cwd + "/" + resultsPath))
+    #projName = os.path.basename(os.path.dirname(cwd + "/" + resultsPath))
+    projName = os.path.basename(glob.glob(cwd + "/*.log")[0]).replace(".log", "")
 
     # Parse the VS results
     resDataAll = parseResultsCsv(resultsPath)
 
-    # Select results, the top X and/or optionally specific ligIDs
-    resDataSel = selectResults(resDataAll, X, ligIDs)
+    # Select results, the X docked poses and/or optionally specific ligIDs
+    resDataSel = selectResults(resDataAll, ligs_from_A, ligs_to_B, ligIDs)
 
     # Print the selected results
     printResults(resDataSel)
@@ -51,17 +47,8 @@ def main():
     repeatsRes = posesPerRepeat(resDataSel)
 
     # Load those poses and save them in the /poses directory
-    loadAnswersWritePoses(repeatsRes, vsPath, projName, icm)
+    loadAnswersWritePoses(repeatsRes, vsPath, projName, label, icm)
 
-    # Now load and write the receptor (binding pocket)
-    recObName = projName + "_rec"
-    recObPath = vsPath + "/vs_setup/" + recObName + ".ob"
-    recPdbPath = vsPath + "/poses/" + recObName + ".pdb"
-    icmRecObName = "a_" + recObName + "."
-    readAndWrite([recObPath],
-                 [[recObName, icmRecObName, recPdbPath]],
-                 icm,
-                 " write pdb ")
     print("\n")
 
 
@@ -72,27 +59,37 @@ def parseArgs():
     # Parsing description
     descr = "Extract docking poses from a VS in .pdb format"
     descr_resultsPath = "Results file of the VS in .csv format"
-    descr_X = "Extract the top X poses"
+    descr_from_A = "Extract ligands from A (indexed at 0)"
+    descr_to_B = "Extract ligands to B (indexed at 0, up to but not including)"
     descr_ligIDs = "Optional ligIDs docking poses to be extracted. Format " \
         "e.g. 1-10,133,217-301"
+    descr_label = "Add a label suffix to all poses generated"
 
     # Define arguments
     parser = argparse.ArgumentParser(description=descr)
     parser.add_argument("resultsPath", help=descr_resultsPath)
-    parser.add_argument("X", help=descr_X)
+    parser.add_argument("from_A", help=descr_from_A)
+    parser.add_argument("to_B", help=descr_to_B)
     parser.add_argument("--ligIDs", help=descr_ligIDs)
+    parser.add_argument("--label", help=descr_label)
 
     # Parse arguments
     args = parser.parse_args()
     resultsPath = args.resultsPath
-    X = int(args.X)
+    from_A = int(args.from_A)
+    to_B = int(args.to_B)
     ligIDs = args.ligIDs
+
+    if args.label:
+        label = args.label
+    else:
+        label = ""
 
     # Make ligIDs a list of IDs integers
     if ligIDs:
         ligIDs = makeIDlist(ligIDs)
 
-    return resultsPath, X, ligIDs
+    return resultsPath, from_A, to_B, ligIDs, label
 
 
 def makeIDlist(stringID):
@@ -137,8 +134,8 @@ def getPath():
     icmHome = os.environ.get('ICMHOME')
 
     # Return path to executable if the environment variable was found
-    if icmHome == None:
-        "The ICMHOME environment variable must be set for your system. Exiting."
+    if icmHome is None:
+        print("ICMHOME env. var. must be set for your system. Exiting.")
         sys.exit()
     else:
         icm = icmHome + "/icm64"
@@ -160,31 +157,36 @@ def parseResultsCsv(resPath):
 
     resLen = len(resData)
 
-    # Generate a selection of the top X docked ligands, selecting only the
-    # overall Rank (ID), the ligandID row[0], the ligand name row[12],
-    # the ICM score [9], and the repeat directory [12]
+    # Select the following:
+    # overall rank (ID),
+    # ligandID row[0],
+    # the ligand name row[12],
+    # ICM score [9],
+    # repeat directory [12]
+    # note: skip the first line of the CSV file resData (header)
     return [[ID, eval(row[0]), row[11], eval(row[9]), row[12]] for row, ID in
             zip(resData[1:], range(1, resLen))]
 
 
-def selectResults(resDataAll, X, ligIDs):
+def selectResults(resDataAll, ligs_from_A, ligs_to_B, ligIDs):
     """
-    Make a selection of the top X VS results, also as optional ligIDs
+    Make a selection of the X ligands from the VS results, also as optional
+    ligIDs
     """
 
-    # First select the top X ligands
-    resDataTop = [row for row in resDataAll[0:X]]
+    # First select X ligands
+    resDataSel = [row for row in resDataAll[ligs_from_A:ligs_to_B]]
 
     # If the ligID flag was used, select by ligIDs, the ligID is in row[1]
-    # and return a combined list: if a selected ligID is within the top X, there
-    # will be a duplicate. However when processed the .pdb docking pose will be
-    # written then overwritten, resulting in the result expected
+    # and return a combined list: if a selected ligID is within the selected X,
+    # there will be a duplicate. However when processed the .pdb docking pose
+    # will be written then overwritten, resulting in the result expected
     if ligIDs:
         resDataID = [row for row in resDataAll if row[1] in ligIDs]
-        return resDataTop + resDataID
-    # Otherwise just return the 'top' list
+        return resDataSel + resDataID
+    # Otherwise just return the 'sel' list
     else:
-        return resDataTop
+        return resDataSel
 
 
 def printResults(resData):
@@ -208,8 +210,8 @@ def printResults(resData):
 
 def posesPerRepeat(resData):
     """
-    Create a list for each repeat directory with the ordered list of ligIDs that
-    should be extracted to be part of the results
+    Create a list for each repeat directory with the ordered list of ligIDs
+    that should be extracted to be part of the results
     """
 
     # Store the ligand data into a dictionary where the keys are repeat numbers
@@ -229,7 +231,7 @@ def posesPerRepeat(resData):
     return repeatsRes
 
 
-def loadAnswersWritePoses(repeatsRes, vsPath, projName, icm):
+def loadAnswersWritePoses(repeatsRes, vsPath, projName, label, icm):
     """
     Walk through repeat directories, and load each
     """
@@ -258,13 +260,13 @@ def loadAnswersWritePoses(repeatsRes, vsPath, projName, icm):
             ligName = row[2]
             ligScore = row[3]
             pdbFilePath = resultsPath + str(ligRank) + "_" + str(ligScore) + \
-                "_" + str(ligID) + "_" + ligName + ".mol2"
+                "_" + str(ligID) + "_" + ligName + "_" + label + ".pdb"
             selectionName = projName.replace("-", "_") + str(ligID)
             icmName = "a_" + selectionName + "."
 
             pdbFileList.append([selectionName, icmName, pdbFilePath])
 
-        readAndWrite(obFileList, pdbFileList, icm, " write mol2 ")
+        readAndWrite(obFileList, pdbFileList, projName, vsPath, icm)
 
 
 def getAnswersList(repPath, ligsInfo):
@@ -308,7 +310,7 @@ def getAnswersList(repPath, ligsInfo):
     return list(set([lig[1] for lig in ligsInfo]))
 
 
-def readAndWrite(obFileList, pdbFileList, icm, writeFormat):
+def readAndWrite(obFileList, pdbFileList, projName, vsPath, icm):
     """
     Get the information of which *.ob files to read, and which *.pdb files from
     the loaded molecules to write.
@@ -321,17 +323,33 @@ def readAndWrite(obFileList, pdbFileList, icm, writeFormat):
     # Create temp script
     icmScript = open("./temp.icm", "w")
     icmScript.write('call "_startup"\n')
-    # Add the ob file loading part
-    icmScript.write("\n# OPENING FILES\n")
+
+    # Load the receptor
+    recObName = projName + "_rec"
+    recObPath = vsPath + "/vs_setup/" + recObName + ".ob"
+    print("loading receptor: " + recObPath)
+    icmScript.write('openFile "' + recObPath + '"\n')
+
+    # Load each OB file containing the ligands
+    icmScript.write("\n# OPEN FILES\n")
     for obFile in obFileList:
         print("loading:" + obFile)
         icmScript.write('openFile "' + obFile + '"\n')
-    # Add the pdb file saving part
-    icmScript.write("\n# WRITING FILES\n")
+
+    # Create the receptor-ligand complexes, save complexes
+    icmScript.write("\n# MODIFY/WRITE FILES\n")
     for pdbFile in pdbFileList:
-        icmScript.write('sel = ' + pdbFile[1] + "\n")
-        icmScript.write('if ( Name(sel) == "' + pdbFile[0] + '")' +
-                        writeFormat + pdbFile[1] + ' "' + pdbFile[2] + '"\n')
+        # Renumber ligand 'residue' number to avoid overlap with rec res nums
+        icmScript.write('align number ' + pdbFile[1] + 'm 9999\n')
+        # Rename receptor to 'a'
+        icmScript.write('rename a_' + recObName + '.* Name(Name("a" simple),unique)\n')
+        # Create a temporary copy of the receptor
+        icmScript.write('copy Obj( a_' + recObName + '.a ) Name( "temp_rec" object ) delete display\n')
+        # Move the receptor this ligand ICM object
+        icmScript.write('move a_temp_rec.a ' + pdbFile[1] + '\n')
+        # Save this new receptor-ligand complex to a pdb file
+        icmScript.write('write pdb ' + pdbFile[1] + ' "' + pdbFile[2] + '"\n')
+
     icmScript.write("\nquit")
     icmScript.close()
 

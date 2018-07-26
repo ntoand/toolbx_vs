@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 
+# Plot ROC curves describing the true positives vs. false positive rate.
+
+# https://github.com/thomas-coudrat/toolbx_vs
+# Thomas Coudrat <thomas.coudrat@gmail.com>
+
 import argparse
 import sys
 import os
@@ -8,7 +13,7 @@ import plotting
 
 def main():
     """
-    Exectute the vs_plot_roc script
+    Run script
     """
 
     title, vsLegends, vsPaths, vsColors, vsLines, \
@@ -26,8 +31,12 @@ def main():
     p = plotting.plotting(title)
 
     # Get the truePosID range in list format
-    truePosIDlist = p.makeIDlist(truePosIDstr, "True positive ID list: ", True)
-    falsePosIDlist = p.makeIDlist(falsePosIDstr, "False positive ID list: ", True)
+    truePosIDlist = p.makeIDlist(truePosIDstr,
+                                 "True positive ID list: ",
+                                 True)
+    falsePosIDlist = p.makeIDlist(falsePosIDstr,
+                                  "False positive ID list: ",
+                                  True)
     libraryIDlist = truePosIDlist + falsePosIDlist
 
     # Generate a dictionary containing the refinement ligands, if any
@@ -39,7 +48,8 @@ def main():
 
     # Read the results of each VS and keep only the ligIDs that are common
     # to all of them
-    vsIntersects, ligIDintersectSet = p.intersectResults(vsPaths, libraryIDlist)
+    vsIntersects, ligIDintersectSet = p.intersectResults(vsPaths,
+                                                         libraryIDlist)
 
     # Get updated true positive, true negative and library counts given the
     # intersect results
@@ -47,13 +57,13 @@ def main():
                                       truePosIDlist,
                                       "true positives")
     falsePosCount = p.updatedLigCounts(ligIDintersectSet,
-                                      falsePosIDlist,
-                                      "false positives")
+                                       falsePosIDlist,
+                                       "false positives")
     # This value is actually not used, but it complies with the plot() function
     # libraryCount = truePosCount + falsePosCount
     libraryCount = p.updatedLigCounts(ligIDintersectSet,
-                                       libraryIDlist,
-                                       "whole library")
+                                      libraryIDlist,
+                                      "whole library")
 
     # Calculate % of total curves for each of these (write file + return data)
     vsPockets = []
@@ -98,8 +108,8 @@ def parseArgs():
         " Enrichment curves"
     descr_title = "Provide a title for the graph, also used as filename"
     descr_results = "Provide resultDataFiles.csv and 'legend titles' for" \
-        " each curve: 'legend1!' data1.csv 'legend2?' data2.csv" \
-        " 'legend4!!' data4.csv"
+        " each curve: 'legend1!' data1.csv 'blue' 'cont'" \
+        " 'legend2?' data2.csv 'red' 'hyph'"
     descr_truePosIDstr = "Provide the IDs of true positive ligands" \
         " lib (format: 1-514,6001,6700-6702)"
     descr_falsePosIDstr = "Provide the IDs of true negative ligands" \
@@ -155,6 +165,7 @@ def parseArgs():
     return title, vsLegends, vsPaths, vsColors, vsLines, \
         truePosIDstr, falsePosIDstr, xAxisName, yAxisName, \
         ref, gui, log, showAUC
+
 
 if __name__ == "__main__":
     main()

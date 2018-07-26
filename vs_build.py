@@ -1,26 +1,10 @@
 #!/usr/bin/env python
+
+# Builds the files to split a VS into separate slices to be ran in parallel on
+# an HPC cluster using the SLURM or PBS queuing system.
 #
+# https://github.com/thomas-coudrat/toolbx_vs
 # Thomas Coudrat <thomas.coudrat@gmail.com>
-#
-
-"""
-Usage:
-  vs_build.py libStart libEnd sliceSize repeatNum thor walltime setupDir
-  vs_build.py [-h]
-
-
-Arguments:
-  libStart      Ligand library ID where to START the VS
-  libEnd        Ligand library ID where to END the VS
-  sliceSize     Size of the slices
-  repeatNum     Number of repeats
-  thor          Thoroughness of the docking (format: 5.)
-  walltime      Walltime for a single slice (format: 1-24:00:00)
-  setupDir      Name of the directory containing setup files
-
-Options:
-  -h, --help    show this help message and exit
-"""
 
 import os
 import argparse
@@ -32,23 +16,15 @@ import socket
 import json
 import datetime
 import time
-# from docopt import docopt
-
 
 def main():
     """
     Run the following script
     """
 
-    # args = docopt(__doc__, version="0.1")
-    # arg_list = args.keys()
-
     # Getting all the args
     libStart, libEnd, sliceSize, repeatNum, thor, \
         walltime, setupDir, projName, queue = parsing()
-
-    # Figure out the queuing system
-    #queue = getQueuingSys()
 
     # Get the path from the Json file
     icmHome = getPath()
@@ -109,7 +85,7 @@ def parsing():
     descr_thor = "Thoroughness of the docking (format: 5.)"
     descr_walltime = "Walltime for a single slice (format: 1-24:00:00)"
     descr_setupDir = "Name of the directory containing setup files"
-    descr_queue = "Queuing system to be used (sge/slurm)"
+    descr_queue = "Queuing system to be used (sge/slurm/slurm-srun)"
 
     # Defining the arguments
     parser = argparse.ArgumentParser(description=descr)
@@ -139,8 +115,8 @@ def parsing():
     dtbFileName = glob.glob(setupDir + "/*.dtb")[0]
     projName = dtbFileName.replace(".dtb", "").split("/")[1]
 
-    if queue not in ("sge", "slurm"):
-        print("Only 'sge' and 'slurm' are accepted queuing system options")
+    if queue not in ("sge", "slurm", "slurm-srun"):
+        print("'sge', 'slurm' and 'slurm-srun' are the queuing system options")
         sys.exit()
 
     return libStart, libEnd, sliceSize, repeatNum, thor, walltime, setupDir, \
@@ -185,14 +161,14 @@ def cleanRepeatDir(repeatDir):
         print("\n")
 
         # Prompting for removal
-        answer = raw_input('Three options:\n' +
-                           '(abort) operation,\n' +
-                           '(delete) all existing files and continue,\n' +
-                           '(keep) existing files and continue (note that ' +
-                           'you risk overwriting some files)\n' +
-                           '(backup) existing file in a timestamped folder ' +
-                           'per repeat dir\n\n'
-                           'abort/delete/keep/backup? (default=abort) ')
+        answer = input('Three options:\n' +
+                       '(abort) operation,\n' +
+                       '(delete) all existing files and continue,\n' +
+                       '(keep) existing files and continue (note that ' +
+                       'you risk overwriting some files)\n' +
+                       '(backup) existing file in a timestamped folder ' +
+                       'per repeat dir\n\n'
+                       'abort/delete/keep/backup? (default=abort) ')
         if answer == "delete":
             print("DELETING PREVIOUS FILES...")
             for filePath in filePaths:
@@ -310,15 +286,19 @@ def createSlices(libStart, libEnd, sliceSize, walltime, thor, projName,
 
             # Create a slice, check for submission system, run the appropriate
             # command
-            if queue == "slurm":
-                reportLines = slurmSlice(sliceCount, projName, thor,
-                                         lowerLimit, upperLimit,
-                                         libStart, libEnd,
-                                         repeatDir, reportLines, icmHome)
+            if queue == "slurm-srun":
+                reportLines = slurmSrunSlice(sliceCount, projName, thor,
+                                             lowerLimit, upperLimit,
+                                             libStart, libEnd,
+                                             repeatDir, reportLines, icmHome)
             elif queue == "sge":
                 reportLines = sgeSlice(walltime, sliceName, projName, thor,
                                        lowerLimit, upperLimit, repeatDir,
                                        reportLines, icmHome)
+            elif queue == "slurm":
+                reportLines = slurmSlice(walltime, sliceName, projName, thor,
+                                         lowerLimit, upperLimit, repeatDir,
+                                         reportLines, icmHome)
 
             # Update upperLimit and sliceCount
             lowerLimit += sliceSize
@@ -328,7 +308,10 @@ def createSlices(libStart, libEnd, sliceSize, walltime, thor, projName,
         # Update the repeat number
         repeat += 1
 
-        slurmSrun(projName, libStart, libEnd, walltime, repeatDir, repeat, sliceCount - 1)
+        # Combine these slices in a call srun
+        if queue == "slurm-srun":
+            slurmSrun(projName, libStart, libEnd, walltime,
+                      repeatDir, repeat, sliceCount - 1)
 
     return reportLines
 
@@ -357,15 +340,15 @@ def slurmSrun(projName, libStart, libEnd,  walltime, repeatDir, repeat, sliceCou
     lines.append("done")
     lines.append("wait")
 
-    with open(repeatDir + "srun_" + libRange  + ".slurm", "w") as slurmFile:
-        for line in lines:
-            slurmFile.write(line + "\n")
+    with open(repeatDir + "srun_" + libRange  + ".slurm", "w") as f:
+        f.write("\n".join(lines))
 
 
-def slurmSlice(sliceCount, projName, thor, lowerLimit, upperLimit,
-               libStart, libEnd, repeatDir, reportLines, icmHome):
+def slurmSrunSlice(sliceCount, projName, thor, lowerLimit, upperLimit,
+                   libStart, libEnd, repeatDir, reportLines, icmHome):
     """
-    Create a slurm slice and write to a file with the info provided
+    Create a slurm slice that will be used as part of a bundled SRUN command
+    and write to a file with the info provided
     """
 
     lines = []
@@ -380,14 +363,44 @@ def slurmSlice(sliceCount, projName, thor, lowerLimit, upperLimit,
 
     # WRITE SLURM LINES TO FILE
     sliceName = str(libStart) + "-" + str(libEnd) + "_" + str(sliceCount)
-    with open(repeatDir + "slice_" + sliceName + ".sh", "w") as sliceFile:
-        for line in lines:
-            sliceFile.write(line + "\n")
+    with open(repeatDir + "slice_" + sliceName + ".sh", "w") as f:
+        f.write("\n".join(lines))
 
     # Update report
     reportLines.append("\tproject: " + projName +
                        ", repeat:" + os.path.relpath(repeatDir) +
                        ", slice:" + str(sliceCount))
+
+    return reportLines
+
+
+def slurmSlice(walltime, sliceName, projName, thor, lowerLimit, upperLimit,
+               repeatDir, reportLines, icmHome):
+    """
+    Create a slurm slice and write to a file with the info provided
+    """
+
+    lines = []
+    lines.append("#!/bin/bash")
+    lines.append("#SBATCH --mem=1024")
+    lines.append("#SBATCH --time=" + walltime)
+    lines.append("#SBATCH --job-name=" + sliceName)
+    lines.append("")
+    lines.append("ICMHOME=" + icmHome)
+    lines.append("$ICMHOME/icm64 -vlscluster $ICMHOME/_dockScan " + projName +
+                 " thorough=" + thor +
+                 " from=" + str(lowerLimit) +
+                 " to=" + str(upperLimit) +
+                 " >& " + projName + "_" + str(upperLimit) + ".ou")
+
+    # WRITE SLURM LINES TO FILE
+    with open(repeatDir + sliceName + ".slurm", "w") as f:
+        f.write('\n'.join(lines))
+
+    # Update report
+    reportLines.append("\tproject: " + projName +
+                       ", repeat:" + os.path.relpath(repeatDir) +
+                       ", slice:" + sliceName)
 
     return reportLines
 
@@ -415,10 +428,8 @@ def sgeSlice(walltime, sliceName, projName, thor, lowerLimit, upperLimit,
                  " >& " + projName + "_" + str(upperLimit) + ".ou")
 
     # WRITE SLURM LINES TO FILE
-    slurmFile = open(repeatDir + sliceName + ".sge", "w")
-    for line in lines:
-        slurmFile.write(line + "\n")
-    slurmFile.close()
+    with open(repeatDir + sliceName + ".sge", "w") as f:
+        f.write("\n".join(lines))
 
     # Update report
     reportLines.append("\t SLICE:" + sliceName + ".sge")

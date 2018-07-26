@@ -1,17 +1,14 @@
 #!/usr/bin/env python
 
-# -------------------------------------------------------------
+# Create an index file (.inx) of a given .sdf ligand library
+# file, by submitting that .sdf as argument. The .inx file
+# is created in the same directory as .sdf, with the same
+# name but with the .inx extension. It can then be moved to
+# the VS directory.
+# An .icm script is created temporarly, modified and exectuted, then deleted.
 #
-#   Create an index file (.inx) of a given .sdf ligand library
-#   file, by submitting that .sdf as argument. The .inx file
-#   is created in the same directory as .sdf, with the same
-#   name but with the .inx extension. It can then be moved to
-#   the VS directory.
-#   An .icm script is created temporarly, modified and exectuted, then deleted.
-#
-#   Thomas Coudrat, August 2014
-#
-# -------------------------------------------------------------
+# https://github.com/thomas-coudrat/toolbx_vs
+# Thomas Coudrat <thomas.coudrat@gmail.com>
 
 import argparse
 import os
@@ -23,7 +20,7 @@ import json
 
 def main():
     """
-    Run the script
+    Run script
     """
 
     # Get the path from the Json file
@@ -48,7 +45,7 @@ def getPath():
     icmHome = os.environ.get('ICMHOME')
 
     # Return path to executable if the environment variable was found
-    if icmHome == None:
+    if icmHome is None:
         "The ICMHOME environment variable must be set for your system. Exiting."
         sys.exit()
     else:
