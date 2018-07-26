@@ -73,6 +73,7 @@ def confirmSubmit(queuePaths):
     print("\nYou are about to submit " + str(len(queuePaths)) + " jobs.")
 
     answer = input("Do you want to proceed? (yes/no) ")
+    print (answer)
 
     if answer == "yes":
         print("\nSubmitting jobs...\n")

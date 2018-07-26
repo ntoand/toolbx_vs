@@ -179,7 +179,9 @@ openFile "VS_PROJ.ob"
 # Get pocket
 icmPocketFinder Mol(a_*.//DD) & a_*.!H,W 4.6 no no
 # Create sphere around fist (best) pocket
-as_graph = Sphere( g_pocketPOCKET_NUM a_VS_PROJ. 2.5)
+s_out=POCKETS.Type[1]
+as_graph = Sphere( $s_out a_VS_PROJ. 2.5 )
+#as_graph = Sphere( g_pocketPOCKET_NUM a_VS_PROJ. 2.5)
 
 # Setup docking project
 currentDockProj.data[8] = "yes"

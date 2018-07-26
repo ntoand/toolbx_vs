@@ -332,6 +332,7 @@ def slurmSrun(projName, libStart, libEnd,  walltime, repeatDir, repeat, sliceCou
     lines.append("#SBATCH --mem-per-cpu=1024")
     lines.append("#SBATCH --time=" + walltime)
     lines.append("#SBATCH --job-name=" + slurmName)
+    lines.append("#SBATCH --account=monash063")
     lines.append("")
     lines.append("for i in `seq 1 $SLURM_NTASKS`")
     lines.append("do")
@@ -385,6 +386,9 @@ def slurmSlice(walltime, sliceName, projName, thor, lowerLimit, upperLimit,
     lines.append("#SBATCH --mem=1024")
     lines.append("#SBATCH --time=" + walltime)
     lines.append("#SBATCH --job-name=" + sliceName)
+    lines.append("#SBATCH --account=monash063")
+    lines.append("#SBATCH --ntasks=1")
+    lines.append("#SBATCH --cpus-per-task=1")
     lines.append("")
     lines.append("ICMHOME=" + icmHome)
     lines.append("$ICMHOME/icm64 -vlscluster $ICMHOME/_dockScan " + projName +
