@@ -14,6 +14,7 @@
 import glob
 import os
 import argparse
+import sys
 
 
 def main():
@@ -30,6 +31,9 @@ def main():
     if projName == ".":
         projName = os.path.basename(os.getcwd())
 
+    print vsDir, minRep, allRep, projName
+    sys.stdout.flush()
+
     # Create the dictionary storing ligand info
     # based on ligandID: for each ligandID key there
     # is a number of ligangInfo lists equal to the
@@ -38,15 +42,23 @@ def main():
 
     # Goes through repeat directories to gather the score data
     # Returns ligDict (VS results) total number of repeats
+    print 'collectScoreData...'
+    sys.stdout.flush()
     ligDict, totalRepeatNum = collectScoreData(vsDir, ligDict)
 
     # Getting rid of the ligands that were not docking in all repeats attempted
+    print 'removeFailed...'
+    sys.stdout.flush()
     ligDict = removeFailed(ligDict, totalRepeatNum, minRep)
 
     # Sort each ligand docking amongst repeats
+    print 'sortRepeats'
+    sys.stdout.flush()
     ligDict = sortRepeats(ligDict)
 
     # Write the results in a .csv file
+    print 'writeResultFiles'
+    sys.stdout.flush()
     writeResultFiles(ligDict, projName, vsDir)
 
     # Write out individual results files for each repeat, if requested
@@ -56,6 +68,7 @@ def main():
             # Initialise a results text file
             repFileName = "repeat{}_results_{}.csv".format(repeat, projName)
             print("\t" + repFileName)
+	    sys.stdout.flush()
             repFile = open(vsDir + "/" + repFileName, "w")
             repFile.write("No,Nat,Nva,dEhb,dEgrid,dEin,dEsurf" +
                           ",dEel,dEhp,Score,mfScore,Name,Run#\n")
@@ -131,6 +144,7 @@ def collectScoreData(vsDir, ligDict):
                 ligDict = parseScoreLine(ligDict, line, repeatNum)
 
         print("\t" + ouFilePath + "\t" + str(ligDockedNum) + " ligands")
+	sys.stdout.flush()
 
         # Update the repeat number in order to grab the max repeat number
         if maxRepeatNum < int(repeatNum):
@@ -231,6 +245,7 @@ def removeFailed(ligDict, totalRepeatNum, minRepeatNum):
             else:
                 print("\t\t(deleted)")
                 del ligDict[key]
+	    sys.stdout.flush()
 
         # Flag the current ligID when it is found
         if key in rangeFlag.keys():
@@ -243,7 +258,7 @@ def removeFailed(ligDict, totalRepeatNum, minRepeatNum):
     print("\nSUMMARY:\n")
 
     print("\tTotal ligands docked:" + str(len(ligDict.keys())))
-
+    sys.stdout.flush()
     return ligDict
 
 
@@ -286,6 +301,7 @@ def writeResultFiles(ligDict, projName, vsDir):
 
     # Create results file
     print("\tresults_" + projName + ".csv")
+    sys.stdout.flush()
     fileResult = open(vsDir + "/results_" + projName + ".csv", "w")
     fileResult.write("No,Nat,Nva,dEhb,dEgrid,dEin,dEsurf" +
                      ",dEel,dEhp,Score,mfScore,Name,Run#\n")
